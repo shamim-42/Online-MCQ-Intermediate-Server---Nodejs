@@ -47,33 +47,53 @@ app.post("/begin-exam", function (req, res) {
     var followingDay = new Date(current.getTime() + 300000); // + 1 day in ms
     let afterFiveMintes = followingDay.toLocaleDateString();
 
-    let fiveMinutesLater = new Date(Date.now() + (300000))
+    let fiveMinutesLater = new Date(Date.now() + (300000)) //30 minutes duration
 
 
-    var userExamData = new UserExamData({
-        userId: req.body['userId'],
-        examId: req.body['examId'],
-        endTime: fiveMinutesLater,
-        lastSequence: 0,
-        totalQuestion: 0,
-        correctAnswer: 0,
-        answeredQuestion: []
-    });
 
     // console.log(userExamData)
+    // const query = userExamData.find({ color: 'white' });
 
-    userExamData
-        .save()
-        .then(function () {
-            console.log("done");
-            res.send({
-                key: userExamData
-                    ._id
-                    .toString()
-            });
+    UserExamData
+        .findOne({
+            userId: req.body['userId'],
+            examId: req.body['examId']
+        })
+        .then(data => {
+            if (data) {
+                return (
+                    res.send({
+                        "staus": false,
+                        "message": "This exam has already been given !"
+                    })
+                )
+            }
+            else {
+                var userExamData = new UserExamData({
+                    userId: req.body['userId'],
+                    examId: req.body['examId'],
+                    endTime: fiveMinutesLater,
+                    lastSequence: 0,
+                    totalQuestion: 0,
+                    correctAnswer: 0,
+                    answeredQuestion: []
+                });
+                userExamData
+                    .save()
+                    .then(function () {
+                        res.send({
+                            key: userExamData
+                                ._id
+                                .toString()
+                        });
+                    })
+                    .catch(err => {
+                        console.log(err)
+                    })
+            }
         })
         .catch(err => {
-            console.log(err)
+            console.log(err);
         })
 });
 
@@ -84,17 +104,7 @@ app.get("/exam-running/:id", function (req, res) {
     if (!Object.keys(params).length)
         return false;
 
-    UserExamData.findByIdAndUpdate(
-        params.id,
-        {
-            $inc: { lastSequence: 1 }
-        }
-    ).then((data) => {
-        // console.log(data);
-        // if (!data)
-        //     return res.send(false);
-        // res.send(data);
-    })
+    // fetch question from remote application
 
 
     UserExamData
@@ -117,15 +127,27 @@ app.post("/save-answer/:id", function (req, res) {
     if (!Object.keys(params).length)
         return false;
 
+
     //if the question already answered then ignore it to save
     let existing_data = UserExamData
         .findById(params.id)
         .then(function (data) {
-            console.log(data.answeredQuestion)
             if (!data)
                 return res.send(false);
+
+            //if exam time is expired the return false
+            if (data.endTime < new Date(Date.now())) {
+                return res.send({
+                    "status": "Error",
+                    "message": "Time expired"
+                });
+            }
+
             if (data.answeredQuestion.includes(question_id)) {
-                return res.send(false);
+                return res.send({
+                    "status": "Error",
+                    "message": "Already answered"
+                });
             }
             else {
                 UserExamData.findByIdAndUpdate(

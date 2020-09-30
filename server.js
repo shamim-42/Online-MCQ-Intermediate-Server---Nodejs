@@ -1,4 +1,6 @@
 const express = require("express");
+const http = require("http");
+const Request = require("request");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -104,17 +106,90 @@ app.get("/exam-running/:id", function (req, res) {
     if (!Object.keys(params).length)
         return false;
 
-    // fetch question from remote application
-
-
     UserExamData
         .findById(params.id)
         .then(function (data) {
             if (!data)
                 return res.send(false);
-            res.send(data);
+
+            //if exam time is expired the return false
+            if (data.endTime < new Date(Date.now())) {
+                return res.send({
+                    "status": "Error",
+                    "message": "Time expired"
+                });
+            }
+            else {
+                let userId = data.userId
+                let examId = data.examId
+
+                // fetch question from remote application
+                Request.get(
+                    "http://3.17.29.219:8000/api/mcq/question/",
+                    (error, response, body) => {
+                        if (error) {
+                            console.log('external api call error')
+                        }
+
+                        let responseData = JSON.parse(body)
+                        let all_questions = responseData['data'];
+
+                        // let all_eligible_questions = [];
+                        let filtered_questions = [];
+                        all_questions.forEach(element => {
+                            if (element.fk_exam == examId) {
+                                filtered_questions.push(element)
+                            }
+                        });
+
+                        let all_questions_answered = false;
+                        let flag = true;
+
+                        while (flag == true) {
+                            if ((data.answeredQuestion.length == filtered_questions.length)) {
+                                //since all the questions have been answered, we don't need to proceed ahead.
+                                flag = false;
+                                all_questions_answered = true;
+                            }
+                            else {
+                                //now select a random question
+                                let selected_question = "";
+                                if (filtered_questions.length > 0) {
+                                    const randomQuestion = filtered_questions[Math.floor(Math.random() * filtered_questions.length)];
+                                    selected_question = randomQuestion;
+                                }
+                                else {
+                                    selected_question = filtered_questions[0]
+                                }
+
+                                //check whether the selected question already answered or not
+                                if (data.answeredQuestion.includes(selected_question.id)) {
+                                    continue;
+                                }
+                                else {
+                                    return res.send({
+                                        "status": true,
+                                        "message": "New Question to be answered",
+                                        "data": selected_question
+                                    });
+                                }
+                            }
+                        }
+
+
+                        if (all_questions_answered == true) {
+                            return res.send({
+                                "status": true,
+                                "message": "exam_done",
+                                "data": ""
+                            });
+                        }
+
+                    });
+            }
+
         })
-        .catch((err) => console.log(err));
+        .catch((err) => console.log(err))
 });
 
 

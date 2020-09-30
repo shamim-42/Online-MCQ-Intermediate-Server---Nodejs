@@ -51,11 +51,6 @@ app.post("/begin-exam", function (req, res) {
 
     let fiveMinutesLater = new Date(Date.now() + (300000)) //30 minutes duration
 
-
-
-    // console.log(userExamData)
-    // const query = userExamData.find({ color: 'white' });
-
     UserExamData
         .findOne({
             userId: req.body['userId'],
@@ -170,7 +165,10 @@ app.get("/exam-running/:id", function (req, res) {
                                     return res.send({
                                         "status": true,
                                         "message": "New Question to be answered",
-                                        "data": selected_question
+                                        "data": {
+                                            "question": selected_question,
+                                            "sequence": data.lastSequence + 1
+                                        }
                                     });
                                 }
                             }
@@ -198,7 +196,7 @@ app.post("/save-answer/:id", function (req, res) {
 
     let question_id = req.body['questionId']
     let correct = req.body['correct']
-
+    let sequenceIncrement = 1;
     if (!Object.keys(params).length)
         return false;
 
@@ -228,12 +226,13 @@ app.post("/save-answer/:id", function (req, res) {
                 UserExamData.findByIdAndUpdate(
                     params.id,
                     {
-                        $inc: { lastSequence: 1 },
                         $inc: { correctAnswer: correct },
                         $push: { answeredQuestion: question_id },
+                        $inc: { lastSequence: sequenceIncrement },
+
                     }
                 ).then((data) => {
-                    // console.log(data);
+                    console.log(data);
                     // if (!data)
                     //     return res.send(false);
                     // res.send(data);

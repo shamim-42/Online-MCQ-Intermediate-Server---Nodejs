@@ -228,16 +228,16 @@ app.post("/save-answer/:id", function (req, res) {
                 UserExamData.findByIdAndUpdate(
                     params.id,
                     {
-                        $inc: { correctAnswer: correct },
                         $push: { answeredQuestion: question_id },
                         $inc: { lastSequence: sequenceIncrement },
-
+                        $inc: { correctAnswer: correct },
                     }
-                ).then((data) => {
+                ).then((justData) => {
                     // console.log(data);
                     // if (!data)
                     //     return res.send(false);
                     // res.send(data);
+                    console.log(justData)
                 })
 
                 //now check whether this answered question was the last question in the exam.

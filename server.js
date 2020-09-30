@@ -1,5 +1,6 @@
 const express = require("express");
 const http = require("http");
+const axios = require("axios");
 const Request = require("request");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
@@ -8,6 +9,7 @@ const app = express();
 
 const UserData = require("./model/userdata");
 const UserExamData = require("./model/userExamData");
+const { parse } = require("path");
 
 mongoose.Promise = global.Promise;
 
@@ -232,50 +234,99 @@ app.post("/save-answer/:id", function (req, res) {
 
                     }
                 ).then((data) => {
-                    console.log(data);
+                    // console.log(data);
                     // if (!data)
                     //     return res.send(false);
                     // res.send(data);
                 })
 
+                //now check whether this answered question was the last question in the exam.
+                //if so, save this result in the external server where user-exam data is recored.
 
-                UserExamData
-                    .findById(params.id)
-                    .then(function (data) {
-                        // console.log(data)
-                        if (!data)
-                            return res.send(false);
-                        res.send(data);
+                const promise = () => {
+                    return new Promise((resolve, reject) => {
+                        Request.get(
+                            "http://3.17.29.219:8000/api/mcq/question/",
+                            (error, response, body) => {
+                                let responseData = JSON.parse(body)
+                                let all_questions = responseData['data'];
+
+                                let filtered_questions = [];
+                                all_questions.forEach(element => {
+                                    if (element.fk_exam == data.examId) {
+                                        filtered_questions.push(element)
+                                    }
+                                });
+
+                                resolve(filtered_questions)
+                            }
+                        );
                     })
-                    .catch((err) => console.log(err));
+                }
+
+                const ks = promise();
+                ks.then(result => {
+                    UserExamData.findById(params.id).then(info => {
+                        // console.log(info)
+                        if (result.length == info.answeredQuestion.length) {
+                            // both length are equal means all questions have been answered.
+                            // we should now save the data.
+                            // let theData = {
+                            //     "total_question": parseInt(result.length),
+                            //     "achieved_marks": parseInt(info.correctAnswer),
+                            //     "fk_user": parseInt(info.userId),
+                            //     "fk_exam": parseInt(info.examId),
+                            //     "status": "completed"
+                            // }
+
+                            console.log(info)
+
+                            let theData = {
+                                "total_question": parseInt(result.length),
+                                "achieved_marks": parseInt(info.correctAnswer),
+                                "fk_user": parseInt(info.userId),
+                                "fk_exam": parseInt(info.examId),
+                                "status": "completed"
+                            }
+                            // console.log(info)
+
+                            axios({
+                                method: "POST",
+                                url: "http://3.17.29.219:8000/api/mcq/user-exam/",
+                                headers: {
+                                    "Content-Type": "application/json"
+                                },
+                                data: theData
+
+                            }).then((ress) => {
+                                console.log(ress.data)
+                            }).catch(err => {
+                                console.log(err)
+                            })
+
+                            // axios.post(
+                            //     
+                            //     theData
+                            // ).then((ress) => {
+                            //     console.log(ress.data)
+                            // }).catch(err => {
+                            //     console.log(err)
+                            // })
+
+                            // Request.post("http://3.17.29.219:8000/api/mcq/user-exam/", theData, (error, response, body) => {
+                            //     console.log(body);
+                            //     console.log(response);
+                            //     // console.log(error)
+                            // })
+                        }
+                    })
+                })
+
+
+                return res.send({ "message": "successfully saved" });
             }
         })
         .catch((err) => console.log(err));
-
-    // UserExamData.findByIdAndUpdate(
-    //     params.id,
-    //     {
-    //         $inc: { lastSequence: 1 },
-    //         $inc: { correctAnswer: correct },
-    //         $push: { answeredQuestion: question_id },
-    //     }
-    // ).then((data) => {
-    //     // console.log(data);
-    //     // if (!data)
-    //     //     return res.send(false);
-    //     // res.send(data);
-    // })
-
-
-    // UserExamData
-    //     .findById(params.id)
-    //     .then(function (data) {
-    //         console.log(data)
-    //         if (!data)
-    //             return res.send(false);
-    //         res.send(data);
-    //     })
-    //     .catch((err) => console.log(err));
 });
 
 

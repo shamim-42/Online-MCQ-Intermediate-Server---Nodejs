@@ -6,8 +6,11 @@ const UserExamSchema = new mongoose.Schema({
     "endTime": Date,
     "lastSequence": Number,
     "totalQuestion": Number,
-    "correctAnswer": Number,
-    "answeredQuestion": [Number]
+    "unnecessary": String,
+    "allQuestionIds": [Number],
+    "answeredQuestion": [Number],
+    "selectedAnswer": [],
+    "lastSentQuestion": Number,
 })
 
 const UserExamData = mongoose.model('userExamData', UserExamSchema)

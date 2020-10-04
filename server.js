@@ -473,29 +473,31 @@ app.post("/save-answer/:id", function (req, res) {
                             }
 
                             //send data to the backend (django) server for evalutaion and by thaking the response show the user his result.
+                            console.log(BASE_URL + "/api/answer-evaluation/");
+                            console.log('before eval');
+                            console.log(theData)
+                            axios({
+                                method: "POST",
+                                url: BASE_URL + "/api/answer-evaluation/",
+                                headers: {
+                                    "Content-Type": "application/json"
+                                },
+                                data: theData
 
-                            // axios({
-                            //     method: "POST",
-                            //     url: BASE_URL+"/api/mcq/exam-evalutaion/",
-                            //     headers: {
-                            //         "Content-Type": "application/json"
-                            //     },
-                            //     data: theData
-
-                            // }).then((exam_result) => {
-                            //     return res.send({
-                            //         "status": true,
-                            //         "message": "exam_result",
-                            //         "data": exam_result
-                            //     });
-                            // }).catch(err => {
-                            //     console.log(err)
-                            // })
-                            return res.send({
-                                "status": true,
-                                "message": "exam_result",
-                                "data": 'exam_result'
-                            });
+                            }).then((exam_result) => {
+                                return res.send({
+                                    "status": true,
+                                    "message": "exam_result",
+                                    "data": exam_result.data.data
+                                });
+                            }).catch(err => {
+                                console.log('evaluation error')
+                            })
+                            // return res.send({
+                            //     "status": true,
+                            //     "message": "exam_result",
+                            //     "data": 'exam_result'
+                            // });
                         }
                         else {
 
@@ -546,133 +548,9 @@ app.post("/save-answer/:id", function (req, res) {
                                 .catch(err => {
                                     console.log('err');
                                 })
-
-
-                            // fetch_a_question(parseInt(random_question_id))
-                            //     .then(the_question => {
-                            //         UserExamData
-                            //             .findByIdAndUpdate(info.id, { "lastSentQuestion": selected_question.id })
-                            //             .then(() => {
-                            //                 return res.send({
-                            //                     "status": true,
-                            //                     "message": "New Question to be answered",
-                            //                     "data": {
-                            //                         "question": the_question,
-                            //                         "sequence": data.lastSequence + 1
-                            //                     }
-                            //                 });
-                            //             })
-                            //             .catch(err => {
-                            //                 console.log(err)
-                            //             })
-                            //     })
-                            //     .catch(er => {
-                            //         console.log("hirej")
-                            //     })
-
-
-
-
-                            // return res.send({
-                            //     "status": true,
-                            //     "message": "exam_done",
-                            //     "data": ""
-                            // });
                         }
                     })
 
-                // UserExamData.findById(params.id)
-                //     .then(info => {
-                //         if (info.totalQuestion == info.answeredQuestion.length) {
-
-                //             let theData = {
-                //                 "userId": parseInt(info.userId),
-                //                 "examId": parseInt(info.examId),
-                //                 "selectedAnswer": info.selectedAnswer
-                //             }
-
-                //             // axios({
-                //             //     method: "POST",
-                //             //     url: BASE_URL+"/api/mcq/exam-evalutaion/",
-                //             //     headers: {
-                //             //         "Content-Type": "application/json"
-                //             //     },
-                //             //     data: theData
-
-                //             // }).then((exam_result) => {
-                //             //     return res.send({
-                //             //         "status": true,
-                //             //         "message": "exam_result",
-                //             //         "data": exam_result
-                //             //     });
-                //             // }).catch(err => {
-                //             //     console.log(err)
-                //             // })
-                //             return res.send({
-                //                 "status": true,
-                //                 "message": "exam_result",
-                //                 "data": exam_result
-                //             });
-                //         }
-                //         else {
-
-                //             //since this is not the last question we should return another random question
-                //             // fetch question from remote application
-                //             fetch_total_question(info.examId) //data.id=examId
-                //                 .then(result => {
-                //                     let filtered_questions = result;
-                //                     let flag = true;
-
-                //                     while (flag == true) {
-                //                         if ((info.answeredQuestion.length == filtered_questions.length)) {
-                //                             //since all the questions have been answered, we don't need to proceed ahead.
-                //                             flag = false;
-                //                         }
-                //                         else {
-                //                             //now select a random question
-                //                             let selected_question = "";
-                //                             if (filtered_questions.length > 0) {
-                //                                 const randomQuestion = filtered_questions[Math.floor(Math.random() * filtered_questions.length)];
-                //                                 selected_question = randomQuestion;
-                //                             }
-                //                             else {
-                //                                 selected_question = filtered_questions[0]
-                //                             }
-
-                //                             //check whether the selected question already answered or not
-                //                             if (data.answeredQuestion.includes(selected_question.id)) {
-                //                                 continue;
-                //                             }
-                //                             else {
-                //                                 UserExamData
-                //                                     .findByIdAndUpdate(info.id, { "lastSentQuestion": selected_question.id })
-                //                                     .then(() => {
-                //                                         return res.send({
-                //                                             "status": true,
-                //                                             "message": "New Question to be answered",
-                //                                             "data": {
-                //                                                 "question": selected_question,
-                //                                                 "sequence": data.lastSequence + 1
-                //                                             }
-                //                                         });
-                //                                     })
-
-                //                             }
-                //                         }
-                //                     }
-
-                //                     //since flag is false, all questions are answered
-                //                     if (flag == false) {
-                //                         return res.send({
-                //                             "status": true,
-                //                             "message": "exam_done",
-                //                             "data": ""
-                //                         });
-                //                     }
-                //                 })
-
-                //         }
-                //     })
             }
         })
         .catch((err) => console.log('the error'));
@@ -712,7 +590,7 @@ app.get("/get-first-question/:exam_key", (req, res) => {
 
                             //now make the 'lastSequence' value equal to one (as this question is the first question).
                             //next time when api call will be happened we will check this if the lastSequence was 1.
-                            UserExamData.findByIdAndUpdate(exam_key, {lastSentQuestion: question_to_return.id })
+                            UserExamData.findByIdAndUpdate(exam_key, { lastSentQuestion: question_to_return.id })
                                 .then(
                                     res.send({
                                         "status": true,

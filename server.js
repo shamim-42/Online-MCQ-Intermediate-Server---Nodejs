@@ -28,23 +28,23 @@ mongoose
 app.use(cors());
 app.use(bodyParser.json());
 
-app.delete("/user-data/:id", function (req, res) {
-    var params = req.params;
 
-    if (!Object.keys(params).length)
-        return false;
+//////////////////  SOCKET.IO  SERVER //////////////////
 
-    UserData
-        .findByIdAndRemove(params.id)
-        .then(function (data) {
-            if (!data)
-                return res.send(false);
-            res.send(data);
-        })
-        .catch((err) => console.log(err));
+const server = require('http').createServer();
+const options = { /* ... */ };
+const io = require('socket.io')(server, options);
+
+io.on('connection', socket => {
+    console.log('client connected')
 });
 
-///////////////////////////////////
+server.listen(5000);
+////////////////// END OF SOCKET.IO  SERVER ////////////
+
+
+
+///////////////////////////////////  API ENDPOINTS ////////////////
 app.post("/begin-exam", function (req, res) {
     var current = new Date(); //'September 30 2020'
     var followingDay = new Date(current.getTime() + 300000); // + 1 day in ms
@@ -61,8 +61,8 @@ app.post("/begin-exam", function (req, res) {
             if (data) {
                 return (
                     res.send({
-                        "staus": false,
-                        "message": "This exam has already been given !"
+                        "status": false,
+                        "message": "already_given"
                     })
                 )
             }
@@ -71,35 +71,71 @@ app.post("/begin-exam", function (req, res) {
                 let total_q = 0;
                 fetch_total_question(req.body['examId'])
                     .then(output => {
-                        total_q = output.length;
-                        let all_ques_ids = [];
+                        //fetch the exam. we need some data like, exam duration
+                        fetch_exam_detail(req.body['examId'])
+                            .then(exm_duration => {
+                                total_q = output.length;
+                                let all_ques_ids = [];
 
-                        for (let i = 0; i < output.length; i++) {
-                            all_ques_ids.push(output[i].id);
-                        }
+                                for (let i = 0; i < output.length; i++) {
+                                    all_ques_ids.push(output[i].id);
+                                }
 
-                        var userExamData = new UserExamData({
-                            userId: req.body['userId'],
-                            examId: req.body['examId'],
-                            endTime: fiveMinutesLater,
-                            lastSequence: 0,
-                            lastSentQuestion: 0,
-                            totalQuestion: total_q,
-                            allQuestionIds: all_ques_ids,
-                            answeredQuestion: [],
-                            selectedAnswer: [],
-                        });
-                        userExamData
-                            .save()
-                            .then(function () {
-                                res.send({
-                                    key: userExamData
-                                        ._id
-                                        .toString()
+                                let duration_in_milli_seconds = exm_duration * 60 * 1000 // if duration is 10 minutes. then 10 * 60 = 600 seconds 1== 600 * 1000 = 600000 miliseconds
+                                let endingTime = new Date(Date.now() + (duration_in_milli_seconds))
+
+                                var userExamData = new UserExamData({
+                                    userId: req.body['userId'],
+                                    examId: req.body['examId'],
+                                    endTime: endingTime,
+                                    examDuration: exm_duration,
+                                    lastSequence: 0,
+                                    lastSentQuestion: 0,
+                                    totalQuestion: total_q,
+                                    allQuestionIds: all_ques_ids,
+                                    answeredQuestion: [],
+                                    selectedAnswer: [],
                                 });
+
+                                userExamData
+                                    .save()
+                                    .then(function () {
+                                        let passed_seconds = 0;
+                                        let passed_minutes = 0;
+
+                                        setInterval(() => {
+                                            passed_seconds++;
+                                            if (passed_seconds == 60) {
+                                                passed_minutes++;
+                                                passed_seconds = 0;
+                                            }
+                                            io.emit('exam_duration_message', { 'minutes': passed_minutes, 'seconds': passed_seconds });
+                                            // io.emit('exam_duration_message', passed_seconds);
+                                        }, 1000);
+
+
+                                        res.send({
+                                            key: userExamData
+                                                ._id
+                                                .toString()
+                                        });
+
+
+                                        res.send({
+                                            "status": true,
+                                            "message": "exam_key",
+                                            "data": {
+                                                "key": userExamData._id.toString(),
+                                            }
+                                        })
+
+                                    })
+                                    .catch(err => {
+                                        console.log(err)
+                                    })
                             })
-                            .catch(err => {
-                                console.log(err)
+                            .catch(nah => {
+                                console.log('nah')
                             })
                     })
                     .catch(err => {
@@ -111,6 +147,27 @@ app.post("/begin-exam", function (req, res) {
             console.log('err');
         })
 });
+
+////////////////////////// Fetching Exam Detail ///////////////////
+const fetch_exam_detail = (examId) => {
+    return new Promise((resolve, reject) => {
+        axios({
+            method: "GET",
+            url: BASE_URL + "/api/mcq/exam/" + examId
+        })
+            .then(body => {
+                // let responseData = JSON.parse(body.data)
+                let exam_duration = body.data.data.duration;
+
+                resolve(exam_duration)
+            })
+            .catch(err => {
+                reject('failed_to_fetch_exam_detail');
+            })
+    })
+}
+////////////////////////////  ending  /////////////////////////////////////////////////
+
 
 ////////////////////////// Fetching Total questions of any exam ///////////////////
 const fetch_total_question = (examId) => {
@@ -204,7 +261,10 @@ app.get("/exam-running/:id", function (req, res) {
                         res.send({
                             "status": true,
                             "message": "qustion_to_answer",
-                            "data": question
+                            "data": {
+                                "question": question,
+                                "sequence": data.lastSequence
+                            }
                         })
                     })
                     .catch(err => {
@@ -221,173 +281,6 @@ app.get("/exam-running/:id", function (req, res) {
 });
 
 
-
-
-// app.post("/save-answer/:id", function (req, res) {
-//     var params = req.params;
-
-//     let question_id = req.body['questionId']
-//     // let correct = req.body['correct'];
-//     let selectedAnswer = req.body['selected']
-//     let sequenceIncrement = 1;
-
-//     if (!Object.keys(params).length)
-//         return false;
-
-
-//     //if the question already answered then ignore it to save
-//     let existing_data = UserExamData
-//         .findById(params.id)
-//         .then(function (data) {
-//             if (!data)
-//                 return res.send({
-//                     "status": false,
-//                     "message": "error"
-//                 });
-//             //if exam time is expired the return false
-//             if (data.endTime < new Date(Date.now())) {
-//                 return res.send({
-//                     "status": false,
-//                     "message": "time_expired"
-//                 });
-//             }
-
-//             if (data.answeredQuestion.includes(question_id)) {
-//                 return res.send({
-//                     "status": false,
-//                     "message": "answered"
-//                 });
-//             }
-//             else {
-//                 let questionAnswerMap = {
-//                     question_id: question_id,
-//                     selected_answer: selectedAnswer
-//                 }
-//                 //////// I have made the below code nested because mongobd was not updating multiple values in a single call of 'findByIdAndUpdate' //////////
-//                 // now push the selected answer in the respective array
-//                 UserExamData.findByIdAndUpdate(
-//                     params.id,
-//                     {
-//                         $push: { selectedAnswer: questionAnswerMap },
-//                     }
-//                 ).then(() => {
-//                     //push the answered question id in the respective array and increse the sequence number
-//                     UserExamData.findByIdAndUpdate(
-//                         params.id,
-//                         {
-//                             $push: { answeredQuestion: question_id },
-//                             $inc: { lastSequence: sequenceIncrement }
-//                         }
-//                     ).then(() => {
-//                         //save the last answered question_id so that we can show this question to user if he refresh the page
-//                         //push the answered question id in the respective array and increse the sequence number
-//                         UserExamData.findByIdAndUpdate(
-//                             params.id,
-//                             {
-//                                 'lastSentQuestion': question_id,
-//                             }
-//                         ).then(() => {
-
-//                             UserExamData.findById(params.id)
-//                                 .then(info => {
-//                                     if (info.totalQuestion == info.answeredQuestion.length) {
-
-//                                         let theData = {
-//                                             "userId": parseInt(info.userId),
-//                                             "examId": parseInt(info.examId),
-//                                             "selectedAnswer": info.selectedAnswer
-//                                         }
-
-//                                         // axios({
-//                                         //     method: "POST",
-//                                         //     url: BASE_URL+"/api/mcq/exam-evalutaion/",
-//                                         //     headers: {
-//                                         //         "Content-Type": "application/json"
-//                                         //     },
-//                                         //     data: theData
-
-//                                         // }).then((exam_result) => {
-//                                         //     return res.send({
-//                                         //         "status": true,
-//                                         //         "message": "exam_result",
-//                                         //         "data": exam_result
-//                                         //     });
-//                                         // }).catch(err => {
-//                                         //     console.log(err)
-//                                         // })
-//                                         return res.send({
-//                                             "status": true,
-//                                             "message": "exam_result",
-//                                             "data": exam_result
-//                                         });
-//                                     }
-//                                     else {
-
-//                                         //since this is not the last question we should return another random question
-//                                         // fetch question from remote application
-//                                         fetch_total_question(info.examId) //data.id=examId
-//                                             .then(result => {
-//                                                 let filtered_questions = result;
-//                                                 let flag = true;
-
-//                                                 while (flag == true) {
-//                                                     if ((info.answeredQuestion.length == filtered_questions.length)) {
-//                                                         //since all the questions have been answered, we don't need to proceed ahead.
-//                                                         flag = false;
-//                                                     }
-//                                                     else {
-//                                                         //now select a random question
-//                                                         let selected_question = "";
-//                                                         if (filtered_questions.length > 0) {
-//                                                             const randomQuestion = filtered_questions[Math.floor(Math.random() * filtered_questions.length)];
-//                                                             selected_question = randomQuestion;
-//                                                         }
-//                                                         else {
-//                                                             selected_question = filtered_questions[0]
-//                                                         }
-
-//                                                         //check whether the selected question already answered or not
-//                                                         if (data.answeredQuestion.includes(selected_question.id)) {
-//                                                             continue;
-//                                                         }
-//                                                         else {
-//                                                             UserExamData
-//                                                                 .findByIdAndUpdate(info.id, { "lastSentQuestion": selected_question.id })
-//                                                                 .then(() => {
-//                                                                     return res.send({
-//                                                                         "status": true,
-//                                                                         "message": "New Question to be answered",
-//                                                                         "data": {
-//                                                                             "question": selected_question,
-//                                                                             "sequence": data.lastSequence + 1
-//                                                                         }
-//                                                                     });
-//                                                                 })
-
-//                                                         }
-//                                                     }
-//                                                 }
-
-//                                                 //since flag is false, all questions are answered
-//                                                 if (flag == false) {
-//                                                     return res.send({
-//                                                         "status": true,
-//                                                         "message": "exam_done",
-//                                                         "data": ""
-//                                                     });
-//                                                 }
-//                                             })
-
-//                                     }
-//                                 })
-//                         })
-//                     })
-//                 })
-
-//             }
-//         })
-//         .catch((err) => console.log(err));
-// });
 
 
 app.post("/save-answer/:id", function (req, res) {
@@ -440,16 +333,6 @@ app.post("/save-answer/:id", function (req, res) {
 
                 let sequence = data.lastSequence + 1;
 
-                console.log(selected_ans)
-                let updatedData = {
-                    selectedAnswer: selected_ans,
-                    answeredQuestion: answered_ques,
-                    lastSequence: data.lastSequence + 1,
-                    lastSentQuestion: question_id
-                }
-
-                console.log(updatedData)
-
                 UserExamData.findByIdAndUpdate(
                     params.id,
                     {
@@ -463,7 +346,7 @@ app.post("/save-answer/:id", function (req, res) {
                     }
                 )
                     .then(info => {
-                        console.log('before')
+                        console.log('before checking to eval')
                         console.log(info)
                         if (info.allQuestionIds.length == info.answeredQuestion.length) {
                             let theData = {
@@ -485,7 +368,8 @@ app.post("/save-answer/:id", function (req, res) {
                                 data: theData
 
                             }).then((exam_result) => {
-                                return res.send({
+                                console.log(exam_result)
+                                res.send({
                                     "status": true,
                                     "message": "exam_result",
                                     "data": exam_result.data.data
@@ -531,13 +415,13 @@ app.post("/save-answer/:id", function (req, res) {
                                     let the_question = body.data['data'];
 
                                     UserExamData.findByIdAndUpdate(data.id, { "lastSentQuestion": random_question_id })
-                                        .then(() => {
+                                        .then((updatedData) => {
                                             return res.send({
                                                 "status": true,
                                                 "message": "new_question",
                                                 "data": {
                                                     "question": the_question,
-                                                    "sequence": data.lastSequence
+                                                    "sequence": updatedData.lastSequence
                                                 }
                                             });
                                         })
@@ -562,7 +446,6 @@ app.post("/save-answer/:id", function (req, res) {
 
 app.get("/get-first-question/:exam_key", (req, res) => {
     let exam_key = req.params['exam_key'];
-    let question_to_return = "";
     UserExamData.findById(exam_key)
         .then((data) => {
             if (!data) {
@@ -578,6 +461,7 @@ app.get("/get-first-question/:exam_key", (req, res) => {
                 if (data.lastSequence == 0) {
                     fetch_total_question(data.examId)
                         .then(all_questions => {
+                            let question_to_return = "";
                             //now select a random question
                             if (all_questions.length > 0) {
                                 const randomQuestion = all_questions[Math.floor(Math.random() * all_questions.length)];
@@ -590,13 +474,18 @@ app.get("/get-first-question/:exam_key", (req, res) => {
 
                             //now make the 'lastSequence' value equal to one (as this question is the first question).
                             //next time when api call will be happened we will check this if the lastSequence was 1.
-                            UserExamData.findByIdAndUpdate(exam_key, { lastSentQuestion: question_to_return.id })
+                            UserExamData.findByIdAndUpdate(exam_key, { lastSentQuestion: question_to_return.id, lastSequence: 1 })
                                 .then(
-                                    res.send({
-                                        "status": true,
-                                        "message": "first_question",
-                                        "data": question_to_return
-                                    })
+                                    kk => {
+                                        res.send({
+                                            "status": true,
+                                            "message": "first_question",
+                                            "data": {
+                                                "question": question_to_return,
+                                                "sequence": 1
+                                            }
+                                        })
+                                    }
                                 )
 
                         }

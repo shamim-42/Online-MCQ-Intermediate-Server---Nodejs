@@ -4,6 +4,7 @@ const UserExamSchema = new mongoose.Schema({
     "userId": Number,
     "examId": Number,
     "endTime": Date,
+    "examDuration": Number,
     "lastSequence": Number,
     "totalQuestion": Number,
     "unnecessary": String,

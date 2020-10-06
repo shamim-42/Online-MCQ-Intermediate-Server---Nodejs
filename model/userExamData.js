@@ -12,7 +12,10 @@ const UserExamSchema = new mongoose.Schema({
     "answeredQuestion": [Number],
     "selectedAnswer": [],
     "lastSentQuestion": Number,
+    "timeOutReference": Object,
+    "timeIntervalReference": Object,
 })
+
 
 const UserExamData = mongoose.model('userExamData', UserExamSchema)
 

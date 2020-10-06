@@ -44,6 +44,20 @@ server.listen(5000);
 
 
 
+/////////// some global variables  ////////////
+let exam_time_out;
+let time_duration_interval;
+//////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
 ///////////////////////////////////  API ENDPOINTS ////////////////
 app.post("/begin-exam", function (req, res) {
     var current = new Date(); //'September 30 2020'
@@ -84,6 +98,22 @@ app.post("/begin-exam", function (req, res) {
                                 let duration_in_milli_seconds = exm_duration * 60 * 1000 // if duration is 10 minutes. then 10 * 60 = 600 seconds 1== 600 * 1000 = 600000 miliseconds
                                 let endingTime = new Date(Date.now() + (duration_in_milli_seconds))
 
+                                //////  time controlling code  ///////
+                                let passed_seconds = 0;
+                                let passed_minutes = 0;
+                                let time_interval_reference = setInterval(() => {
+                                    passed_seconds++;
+                                    if (passed_seconds == 60) {
+                                        passed_minutes++;
+                                        passed_seconds = 0;
+                                    }
+                                    io.emit('exam_duration_message', { 'minutes': passed_minutes, 'seconds': passed_seconds });
+                                    // io.emit('exam_duration_message', passed_seconds);
+                                }, 1000);
+
+                                ////////  end of time controlling //////
+
+
                                 var userExamData = new UserExamData({
                                     userId: req.body['userId'],
                                     examId: req.body['examId'],
@@ -95,23 +125,15 @@ app.post("/begin-exam", function (req, res) {
                                     allQuestionIds: all_ques_ids,
                                     answeredQuestion: [],
                                     selectedAnswer: [],
+                                    // timeIntervalReference: time_interval_reference,
                                 });
 
                                 userExamData
                                     .save()
                                     .then(function () {
-                                        let passed_seconds = 0;
-                                        let passed_minutes = 0;
 
-                                        setInterval(() => {
-                                            passed_seconds++;
-                                            if (passed_seconds == 60) {
-                                                passed_minutes++;
-                                                passed_seconds = 0;
-                                            }
-                                            io.emit('exam_duration_message', { 'minutes': passed_minutes, 'seconds': passed_seconds });
-                                            // io.emit('exam_duration_message', passed_seconds);
-                                        }, 1000);
+
+
 
 
                                         res.send({
@@ -131,7 +153,7 @@ app.post("/begin-exam", function (req, res) {
 
                                     })
                                     .catch(err => {
-                                        console.log(err)
+                                        console.log('err')
                                     })
                             })
                             .catch(nah => {
@@ -221,6 +243,15 @@ const fetch_a_question = (question_id) => {
 app.get("/exam-running/:id", function (req, res) {
     var params = req.params;
 
+    ////// testing ////////
+
+    // clearInterval(time_duration_interval);
+    console.log('just testing:')
+    console.log(typeof(time_duration_interval))
+    ///////////////////////
+
+
+
     if (!Object.keys(params).length)
         return res.send({
             "status": false,
@@ -257,7 +288,7 @@ app.get("/exam-running/:id", function (req, res) {
                 })
                     .then(responseData => {
                         let question = responseData.data['data'];
-                        console.log(question)
+                        // console.log(question)
                         res.send({
                             "status": true,
                             "message": "qustion_to_answer",
@@ -312,7 +343,7 @@ app.post("/save-answer/:id", function (req, res) {
             }
             //if already answered then return false
             if (data.answeredQuestion.includes(question_id)) {
-                console.log(data)
+                // console.log(data)
                 return res.send({
                     "status": false,
                     "message": "answered"
@@ -342,7 +373,7 @@ app.post("/save-answer/:id", function (req, res) {
                         "lastSentQuestion": question_id
                     },
                     (l) => {
-                        console.log(l)
+                        // console.log(l)
                     }
                 )
                     .then(info => {
@@ -369,7 +400,7 @@ app.post("/save-answer/:id", function (req, res) {
                                 data: theData
 
                             }).then((exam_result) => {
-                                console.log(exam_result)
+                                // console.log(exam_result)
                                 res.send({
                                     "status": true,
                                     "message": "exam_result",
@@ -399,7 +430,7 @@ app.post("/save-answer/:id", function (req, res) {
                                 random_question_id = unanswered_questions[0]
                             }
 
-                            console.log('random_question_id: ' + random_question_id);
+                            // console.log('random_question_id: ' + random_question_id);
 
 
                             axios({

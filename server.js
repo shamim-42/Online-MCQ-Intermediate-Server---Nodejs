@@ -346,19 +346,20 @@ app.post("/save-answer/:id", function (req, res) {
                     }
                 )
                     .then(info => {
-                        console.log('before checking to eval')
-                        console.log(info)
+                        // console.log('before checking to eval')
+                        // console.log(info)
                         if (info.allQuestionIds.length == info.answeredQuestion.length) {
                             let theData = {
                                 "userId": parseInt(info.userId),
                                 "examId": parseInt(info.examId),
-                                "selectedAnswer": info.selectedAnswer
+                                "selectedAnswer": info.selectedAnswer,
+                                "taken_time": 10000, //in minutes
                             }
 
                             //send data to the backend (django) server for evalutaion and by thaking the response show the user his result.
-                            console.log(BASE_URL + "/api/answer-evaluation/");
-                            console.log('before eval');
-                            console.log(theData)
+                            // console.log(BASE_URL + "/api/answer-evaluation/");
+                            // console.log('before eval');
+                            // console.log(theData)
                             axios({
                                 method: "POST",
                                 url: BASE_URL + "/api/answer-evaluation/",
@@ -377,11 +378,6 @@ app.post("/save-answer/:id", function (req, res) {
                             }).catch(err => {
                                 console.log('evaluation error')
                             })
-                            // return res.send({
-                            //     "status": true,
-                            //     "message": "exam_result",
-                            //     "data": 'exam_result'
-                            // });
                         }
                         else {
 

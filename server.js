@@ -6,9 +6,12 @@ const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const app = express();
-const BASE_URL = "http://localhost:8000"
+var jwt = require('jsonwebtoken');
+const BASE_URL = "http://localhost:8000";
+const JWT_SECRET_KEY = "KSJFO2UI02xlkdfj2oq3ru298wk";
 const UserData = require("./model/userdata");
 const UserExamData = require("./model/userExamData");
+const { time } = require("console");
 
 mongoose.Promise = global.Promise;
 
@@ -28,6 +31,17 @@ mongoose
 app.use(cors());
 app.use(bodyParser.json());
 
+app.use(function (req, res, next) {
+    if (!req.headers.authorization) {
+        return res.status(403).json(
+            {
+                status: false,
+                message: 'No credentials sent!'
+            }
+        );
+    }
+    next();
+});
 
 //////////////////  SOCKET.IO  SERVER //////////////////
 
@@ -45,14 +59,8 @@ server.listen(5000);
 
 
 /////////// some global variables  ////////////
-let exam_time_out;
-let time_duration_interval;
+let time_duration_data = {};
 //////////////////////////////////////////////
-
-
-
-
-
 
 
 
@@ -64,118 +72,180 @@ app.post("/begin-exam", function (req, res) {
     var followingDay = new Date(current.getTime() + 300000); // + 1 day in ms
     let afterFiveMintes = followingDay.toLocaleDateString();
 
-    let fiveMinutesLater = new Date(Date.now() + (300000)) //5 minutes duration
+    let jwt_token = req.headers.authorization;
+    console.log(jwt_token)
+    console.log('jwt_token')
 
-    UserExamData
-        .findOne({
-            userId: req.body['userId'],
-            examId: req.body['examId']
-        })
-        .then(data => {
-            if (data) {
-                return (
-                    res.send({
-                        "status": false,
-                        "message": "already_given"
-                    })
-                )
-            }
-            else {
-                //fetch all questions from the remote server. we need the number of total question.
-                let total_q = 0;
-                fetch_total_question(req.body['examId'])
-                    .then(output => {
-                        //fetch the exam. we need some data like, exam duration
-                        fetch_exam_detail(req.body['examId'])
-                            .then(exm_duration => {
-                                total_q = output.length;
-                                let all_ques_ids = [];
+    try {
+        let decoded = jwt.verify(jwt_token, JWT_SECRET_KEY);
 
-                                for (let i = 0; i < output.length; i++) {
-                                    all_ques_ids.push(output[i].id);
-                                }
+        let theUserId = decoded.data.userId;
 
-                                let duration_in_milli_seconds = exm_duration * 60 * 1000 // if duration is 10 minutes. then 10 * 60 = 600 seconds 1== 600 * 1000 = 600000 miliseconds
-                                let endingTime = new Date(Date.now() + (duration_in_milli_seconds))
+        UserExamData
+            .findOne({
+                userId: theUserId,
+                examId: req.body['examId']
+            })
+            .then(data => {
+                if (data) {
+                    return (
+                        res.send({
+                            "status": false,
+                            "message": "already_given"
+                        })
+                    )
+                }
+                else {
+                    //fetch all questions from the remote server. we need the number of total question.
+                    let total_q = 0;
+                    fetch_total_question(req.body['examId'], jwt_token)
+                        .then(output => {
 
-                                //////  time controlling code  ///////
-                                let passed_seconds = 0;
-                                let passed_minutes = 0;
-                                let time_interval_reference = setInterval(() => {
-                                    passed_seconds++;
-                                    if (passed_seconds == 60) {
-                                        passed_minutes++;
-                                        passed_seconds = 0;
-                                    }
-                                    io.emit('exam_duration_message', { 'minutes': passed_minutes, 'seconds': passed_seconds });
-                                    // io.emit('exam_duration_message', passed_seconds);
-                                }, 1000);
+                            if (output.length > 0) {
+                                //fetch the exam. we need some data like, exam duration
+                                fetch_exam_detail(req.body['examId'], jwt_token)
+                                    .then(exm_duration => {
+                                        total_q = output.length;
+                                        let all_ques_ids = [];
 
-                                ////////  end of time controlling //////
+                                        for (let i = 0; i < output.length; i++) {
+                                            all_ques_ids.push(output[i].id);
+                                        }
 
+                                        let duration_in_milli_seconds = exm_duration * 60 * 1000 // if duration is 10 minutes. then 10 * 60 = 600 seconds 1== 600 * 1000 = 600000 miliseconds
+                                        let endingTime = new Date(Date.now() + (duration_in_milli_seconds))
 
-                                var userExamData = new UserExamData({
-                                    userId: req.body['userId'],
-                                    examId: req.body['examId'],
-                                    endTime: endingTime,
-                                    examDuration: exm_duration,
-                                    lastSequence: 0,
-                                    lastSentQuestion: 0,
-                                    totalQuestion: total_q,
-                                    allQuestionIds: all_ques_ids,
-                                    answeredQuestion: [],
-                                    selectedAnswer: [],
-                                    // timeIntervalReference: time_interval_reference,
-                                });
-
-                                userExamData
-                                    .save()
-                                    .then(function () {
-
-
-
-
-
-                                        res.send({
-                                            key: userExamData
-                                                ._id
-                                                .toString()
+                                        var userExamData = new UserExamData({
+                                            userId: theUserId,
+                                            examId: req.body['examId'],
+                                            endTime: endingTime,
+                                            examDuration: exm_duration,
+                                            lastSequence: 0,
+                                            lastSentQuestion: 0,
+                                            totalQuestion: total_q,
+                                            allQuestionIds: all_ques_ids,
+                                            answeredQuestion: [],
+                                            selectedAnswer: [],
                                         });
 
+                                        userExamData
+                                            .save()
+                                            .then(function (newData) {
 
-                                        res.send({
-                                            "status": true,
-                                            "message": "exam_key",
-                                            "data": {
-                                                "key": userExamData._id.toString(),
-                                            }
-                                        })
+                                                //////////////////////////////////////////////  EXAM DURATION CONTROLLING CODE ///////////////////////////////////////////////////  ///////
+                                                let passed_seconds = 0;
+                                                let passed_minutes = 0;
+                                                //below code is for sending the user a timer (shows 0:1, 0:2, 0:3 .... after and after one second)
+                                                // SIRO = setIntervalReferenceOf
+                                                time_duration_data['SIRO-' + newData._id.toString()] = setInterval(() => {
+                                                    passed_seconds++;
+                                                    if (passed_seconds == 60) {
+                                                        passed_minutes++;
+                                                        passed_seconds = 0;
+                                                    }
+                                                    io.emit(newData._id, { 'minutes': passed_minutes, 'seconds': passed_seconds });
+                                                }, 1000);
 
+
+
+                                                //below code is for settimeout. If user can't answer all the question due time, exam will finish automatically
+                                                // STRO = setIntervalReferenceOf
+                                                time_duration_data['STRO-' + newData._id.toString()] = setTimeout(() => {
+                                                    //stop the timeinterval function which was begun during 'exam creation'
+                                                    clearInterval(time_duration_data['SIRO-' + newData._id.toString()]);
+                                                    delete time_duration_data['SIRO-' + newData._id.toString()] //and also delete the saved reference from the global variable
+
+                                                    let theData = {
+                                                        "userId": parseInt(newData.userId),
+                                                        "examId": parseInt(newData.examId),
+                                                        "selectedAnswer": newData.selectedAnswer,
+                                                        "taken_time": newData.examDuration, //in minutes.After the duration completed this setTimeOut function will be executed. That's why here taken_time is equel the the pre-saved examDuration
+                                                    }
+
+                                                    //send data to the backend (django) server for evalutaion and by thaking the response show the user his result.
+                                                    axios({
+                                                        method: "POST",
+                                                        url: BASE_URL + "/api/answer-evaluation/",
+                                                        headers: {
+                                                            "Content-Type": "application/json",
+                                                            "Authorization": jwt_token,
+                                                        },
+                                                        data: theData
+
+                                                    }).then((exam_result) => {
+                                                        io.emit(newData._id, {
+                                                            'exam_done': true
+                                                        });
+                                                    }).catch(err => {
+                                                        console.log('evaluation error')
+                                                    })
+
+                                                }, newData.examDuration * 60 * 1000); //examDuration was in minutes. We converted it into miliseconds
+                                                ///////////////////////////////////////////////////  END OF EXAM DURTION CONTROLLING  //////////////////////////////
+
+
+                                                // res.send({
+                                                //     key: userExamData
+                                                //         ._id
+                                                //         .toString()
+                                                // });
+
+
+                                                res.send({
+                                                    "status": true,
+                                                    "message": "exam_key",
+                                                    "data": {
+                                                        "key": userExamData._id.toString(),
+                                                        "duration": newData.examDuration,
+                                                        "total_marks": newData.totalQuestion,
+                                                    }
+                                                })
+
+                                            })
+                                            .catch(err => {
+                                                console.log('err')
+                                            })
                                     })
-                                    .catch(err => {
-                                        console.log('err')
+                                    .catch(nah => {
+                                        console.log('nah')
                                     })
-                            })
-                            .catch(nah => {
-                                console.log('nah')
-                            })
-                    })
-                    .catch(err => {
-                        console.log('errrrrr')
-                    })
-            }
-        })
-        .catch(err => {
-            console.log('err');
-        })
+                            }
+                            else {
+                                res.send({
+                                    "status": false,
+                                    "message": "no_question"
+                                })
+                            }
+
+                        })
+                        .catch(err => {
+                            console.log('errrrrr')
+                        })
+                }
+            })
+            .catch(err => {
+                console.log('err');
+            })
+    }
+    catch (err) {
+        return (
+            res.send({
+                "status": false,
+                "message": "unauthorized_access"
+            })
+        )
+    }
 });
 
 ////////////////////////// Fetching Exam Detail ///////////////////
-const fetch_exam_detail = (examId) => {
+const fetch_exam_detail = (examId, jwt_token) => {
     return new Promise((resolve, reject) => {
         axios({
             method: "GET",
-            url: BASE_URL + "/api/mcq/exam/" + examId
+            url: BASE_URL + "/api/mcq/exam/" + examId,
+            headers: {
+                "Authorization": jwt_token,
+            }
         })
             .then(body => {
                 // let responseData = JSON.parse(body.data)
@@ -192,11 +262,14 @@ const fetch_exam_detail = (examId) => {
 
 
 ////////////////////////// Fetching Total questions of any exam ///////////////////
-const fetch_total_question = (examId) => {
+const fetch_total_question = (examId, jwt_token) => {
     return new Promise((resolve, reject) => {
         axios({
             method: "GET",
-            url: BASE_URL + "/api/mcq/question/"
+            url: BASE_URL + "/api/mcq/question/",
+            headers: {
+                "Authorization": jwt_token
+            }
         })
             .then(body => {
                 // let responseData = JSON.parse(body.data)
@@ -219,11 +292,14 @@ const fetch_total_question = (examId) => {
 ////////////////////////////ending/////////////////////////////////////////////////
 
 ////////////////////////// Fetching a question by id ///////////////////
-const fetch_a_question = (question_id) => {
+const fetch_a_question = (question_id, jwt_token) => {
     return new Promise((resolve, reject) => {
         axios({
             method: "GET",
-            url: BASE_URL + "/api/mcq/question/" + question_id
+            url: BASE_URL + "/api/mcq/question/" + question_id,
+            headers: {
+                "Authorization": jwt_token,
+            }
         })
             .then(body => {
                 // let responseData = JSON.parse(body.data)
@@ -244,13 +320,9 @@ app.get("/exam-running/:id", function (req, res) {
     var params = req.params;
 
     ////// testing ////////
+    console.log(time_duration_data)
 
-    // clearInterval(time_duration_interval);
-    console.log('just testing:')
-    console.log(typeof(time_duration_interval))
-    ///////////////////////
-
-
+    let jwt_token = req.headers.authorization;
 
     if (!Object.keys(params).length)
         return res.send({
@@ -285,6 +357,9 @@ app.get("/exam-running/:id", function (req, res) {
                 axios({
                     method: "GET",
                     url: BASE_URL + "/api/mcq/question/" + data.lastSentQuestion,
+                    headers: {
+                        "Authorization": jwt_token
+                    }
                 })
                     .then(responseData => {
                         let question = responseData.data['data'];
@@ -316,6 +391,8 @@ app.get("/exam-running/:id", function (req, res) {
 
 app.post("/save-answer/:id", function (req, res) {
     var params = req.params;
+
+    let jwt_token = req.headers.authorization;
 
     let question_id = req.body['questionId']
     // let correct = req.body['correct'];
@@ -380,27 +457,37 @@ app.post("/save-answer/:id", function (req, res) {
                         // console.log('before checking to eval')
                         // console.log(info)
                         if (info.allQuestionIds.length == info.answeredQuestion.length) {
+
+                            let currentTime = new Date(Date.now())
+                            let endingTime = info.endTime;
+                            let time_taken = info.endTime - currentTime //this is in milliseconds
+                            time_taken = Math.ceil(info.examDuration - ((time_taken / 1000) / 60)) //this is in minutes (ceil value. i.e, 10.3 = 11)
+
+                            //stop the timeinterval function which was begun during 'exam creation'
+                            clearInterval(time_duration_data['SIRO-' + info._id.toString()]);
+                            delete time_duration_data['SIRO-' + info._id.toString()]; //deleting the reference from the global variables. after saving exam result  this variable is no logner needed
+
+                            //stop the setTimeOut function which was begun during 'exam creation'
+                            clearTimeout(time_duration_data['STRO-' + info._id.toString()])
+                            delete time_duration_data['STRO-' + info._id.toString()] //deleting the reference from the global variables. after saving exam result  this variable is no logner needed
                             let theData = {
                                 "userId": parseInt(info.userId),
                                 "examId": parseInt(info.examId),
                                 "selectedAnswer": info.selectedAnswer,
-                                "taken_time": 10000, //in minutes
+                                "taken_time": time_taken, //in minutes
                             }
 
                             //send data to the backend (django) server for evalutaion and by thaking the response show the user his result.
-                            // console.log(BASE_URL + "/api/answer-evaluation/");
-                            // console.log('before eval');
-                            // console.log(theData)
                             axios({
                                 method: "POST",
                                 url: BASE_URL + "/api/answer-evaluation/",
                                 headers: {
-                                    "Content-Type": "application/json"
+                                    "Content-Type": "application/json",
+                                    "Authorization": jwt_token,
                                 },
                                 data: theData
 
                             }).then((exam_result) => {
-                                // console.log(exam_result)
                                 res.send({
                                     "status": true,
                                     "message": "exam_result",
@@ -435,8 +522,10 @@ app.post("/save-answer/:id", function (req, res) {
 
                             axios({
                                 method: "GET",
-                                url: BASE_URL + "/api/mcq/question/" + random_question_id
-                                // url: BASE_URL + "/api/mcq/question/3"
+                                url: BASE_URL + "/api/mcq/question/" + random_question_id,
+                                headers: {
+                                    "Authorization": jwt_token,
+                                }
                             })
                                 .then(body => {
                                     let the_question = body.data['data'];
@@ -472,6 +561,7 @@ app.post("/save-answer/:id", function (req, res) {
 
 
 app.get("/get-first-question/:exam_key", (req, res) => {
+    let jwt_token = req.headers.authorization;
     let exam_key = req.params['exam_key'];
     UserExamData.findById(exam_key)
         .then((data) => {
@@ -486,18 +576,28 @@ app.get("/get-first-question/:exam_key", (req, res) => {
             }
             else {
                 if (data.lastSequence == 0) {
-                    fetch_total_question(data.examId)
+                    fetch_total_question(data.examId, jwt_token)
                         .then(all_questions => {
+                            console.log('success to fetch first question')
                             let question_to_return = "";
                             //now select a random question
-                            if (all_questions.length > 0) {
+                            if (all_questions.length > 1) {
                                 const randomQuestion = all_questions[Math.floor(Math.random() * all_questions.length)];
                                 question_to_return = randomQuestion;
 
                             }
-                            else {
+                            else if (all_questions.length == 1) {
                                 question_to_return = all_questions[0]
                             }
+                            else {
+                                return res.send({
+                                    "status": false,
+                                    "message": "no_question",
+                                    "data": ""
+                                })
+                            }
+
+
 
                             //now make the 'lastSequence' value equal to one (as this question is the first question).
                             //next time when api call will be happened we will check this if the lastSequence was 1.
@@ -517,6 +617,9 @@ app.get("/get-first-question/:exam_key", (req, res) => {
 
                         }
                         )
+                        .catch(err => {
+                            console.log('failed to fetch first question');
+                        })
                 }
                 else {
                     return (
